@@ -34,6 +34,8 @@ as well as Adafruit raw 1.8" TFT display
 #include <ST7735_t3.h> // Hardware-specific library
 #include <SPI.h>
 #include "valve.h"
+#include <Fonts/FreeSerifBold18pt7b.h>
+#include <Fonts/FreeSerif9pt7b.h>
 
 #include <Wire.h>
 #include <VL53L0X.h>
@@ -41,7 +43,7 @@ as well as Adafruit raw 1.8" TFT display
 VL53L0X sensor;
 int distance, OldDistance;
 boolean Bottle, OldBottle;
-volatile double waterFlow;
+volatile float waterFlow;
 
 // Option 1: use any pins but a little slower
 ST7735_t3 tft = ST7735_t3(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
@@ -144,13 +146,6 @@ void ScreenUpdate(){
       tft.setTextSize(2);
       Serial.print(F("LLenando"));
       //tft.println("LLENANDO");
-      tft.setTextSize(2);
-      tft.println("Litros");
-      tft.setCursor(30, 35);
-      tft.println("Ahorrados");
-      tft.setCursor(35, 60);
-      tft.setTextSize(4);
-      tft.println(waterFlow);
     }
     else{
       portA.Update();
@@ -161,13 +156,16 @@ void ScreenUpdate(){
       tft.setTextSize(2);
       Serial.print(F("ESPERANDO"));
       //tft.println("ESPERANDO");
-      tft.setTextSize(2);
-      tft.println("Botellas");
-      tft.setCursor(30, 35);
-      tft.println("Servidas");
-      tft.setCursor(60, 60);
-      tft.setTextSize(4);
+      tft.setFont(&FreeSerifBold18pt7b);
+      tft.setCursor(50, 50);
+      tft.setTextSize(1);
       tft.println(BotellaServidas);
+      tft.setCursor(50, 100);
+       tft.setTextColor(ST7735_BLUE);
+      tft.setTextSize(1);
+      tft.print(waterFlow,1);
+      tft.println(F("L"));
+      
     }
     OldBottle = Bottle;
   }
