@@ -39,9 +39,10 @@
 VL53L0X sensor;
 
 int distance, OldDistance;
-boolean Bottle, OldBottle;
+boolean Bottle, OldBottle,WaterFlowing;
 volatile float waterFlow;
 volatile float oldwaterflow;
+volatile float Resta;
 //-------------------------------------------------From strings Demo--------------------------------------------
 String text ="";
 int TextColor = 0;
@@ -133,24 +134,36 @@ void setup(void) {
 }
 
 void pulse(){   //measure the quantity of square wave
-  waterFlow += 1.0/1350;
+  waterFlow += 1.0/1675;
   //DisplayStrings();  
 }
 
 
 void loop() {
+  SenseWaterFlow();
+  CheckBottle();
+  CheckWaterFlow();
+  IOValve();     
+}
+
+void SenseWaterFlow(){
+  if(waterFlow != oldwaterflow){
+    if(waterFlow - oldwaterflow >= 0.1){
+      WaterFlowing = true;
+      Resta = waterFlow - oldwaterflow;
+      Serial.print(F("Resta:"));
+      Serial.println(Resta);      
+    }
+  }else{
+    WaterFlowing = false;
+  }
+}
+
+void CheckBottle(){
   if(millis() - lastSenseMillis > UPDATELASERM) {
     SenseDistance();
     lastSenseMillis = millis(); //Actulizar la ultima hora de envio
   }
-   
-  CheckBottle();
-  CheckWaterFlow();
-  IOValve();
-     
-}
-
-void CheckBottle(){
    if (distance != OldDistance){
     if (distance < 100){
       Bottle = 1;
@@ -171,7 +184,7 @@ void CheckWaterFlow(){
     lastFSenseMillis = millis(); //Actulizar la ultima hora de envio      
   }
   
-  if (waterFlow - oldwaterflow >= 0.1){
+  if (WaterFlowing != false){
     DisplayStrings();    
     oldwaterflow = waterFlow;
     ScreenUpdate();
@@ -190,19 +203,6 @@ void IOValve(){
    }
    OldBottle = Bottle;  
 }
-
-
-/*void FillBottle(){
-  if (oldwaterflow - waterFlow < 1 ){
-    portA.Update(LOW);
-    LitrosAhorrados ++;
-    oldwaterflow = waterFlow ;
-    }else{
-      portA.Update(HIGH);
-      BotellaServidas ++;
-    }
-    OldBottle = Bottle;
-}        */
  
 void DisplayStrings(){ 
   tft.fillScreen(ST7735_BLACK);
@@ -229,8 +229,21 @@ void DisplayStrings(){
     // Print  the string for this iteration
     tft.setCursor(0, tft.height()/2-10);  // display will be halfway down screen
     tft.print(t);
+    SenseWaterFlow();
+    CheckBottle();
+    if(Bottle != true){
+        break;
+      }
+    if(WaterFlowing != true){
+      break;
+    }
+    if(Resta > 0.20){
+      portA.Update(HIGH);
+      delay(500);
+      break;      
+    }
     // Short delay so the text doesn't move too fast
-    delay(200);
+    delay(150);
   }
   if(S < NUMBER_OF_ELEMENTS){
     S++;
@@ -250,7 +263,7 @@ void ScreenUpdate(){
   tft.setCursor(50, 100);
   tft.setTextColor(ST7735_BLUE);
   tft.setTextSize(1);
-  tft.print(waterFlow,1);
+  tft.print(waterFlow,2);
   tft.println(F("L"));
 }
 
