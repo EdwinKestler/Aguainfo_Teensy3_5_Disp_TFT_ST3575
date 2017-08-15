@@ -38,14 +38,16 @@
 
 VL53L0X sensor;
 
-int distance, OldDistance;
-boolean Bottle, OldBottle,WaterFlowing;
+volatile int distance;
+volatile int BotellaServidas = 1;
+volatile boolean Bottle, OldBottle,WaterFlowing, ByDistance, updateScreen, SensedWater, SensedDistance;
+volatile boolean MaxLitersServed = false;
 volatile float waterFlow;
-volatile float oldwaterflow;
-volatile float Resta;
+volatile float oldWaterFlow;
+volatile float Liters;
+volatile float oldLiters;
 //-------------------------------------------------From strings Demo--------------------------------------------
-String text ="";
-int TextColor = 0;
+volatile int TextColor = 0;
 const int NUMBER_OF_ELEMENTS = 11;
 const int MAX_SIZE = 70;
 
@@ -79,10 +81,11 @@ ST7735_t3 tft = ST7735_t3(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST);
 
 unsigned long lastSenseMillis, lastFSenseMillis;
 unsigned long UPDATELASERM = 500UL; //Variable que define el tiempo a trancurrir despues de inicializado el reloj para enviar el primer mensake de MQTT en microsegundos (10*1000UL)= 10segundos
+unsigned long UPDATEFLOWM = 300UL; //Variable que define el tiempo a trancurrir despues de inicializado el reloj para enviar el primer mensake de MQTT en microsegundos (10*1000UL)= 10segundos
 
 Valve portA(6);
-int BotellaServidas;
-int S = 0;
+float InitialLiters = 0;
+const float MAX_Liters = 0.75;
 
 void setup(void) {
   
@@ -134,77 +137,111 @@ void setup(void) {
 }
 
 void pulse(){   //measure the quantity of square wave
-  waterFlow += 1.0/1675;
-  //DisplayStrings();  
+  waterFlow += 1;
 }
 
-
 void loop() {
+  SenseBottle();
   SenseWaterFlow();
-  CheckBottle();
-  CheckWaterFlow();
-  IOValve();     
+  DisplayMassage();
 }
 
 void SenseWaterFlow(){
-  if(waterFlow != oldwaterflow){
-    if(waterFlow - oldwaterflow >= 0.1){
+  if(millis() - lastFSenseMillis > UPDATEFLOWM) {
+    SenseFlowSensor ();
+    lastFSenseMillis = millis();
+  }
+    
+  if (SensedWater != false){
+     Serial.print(F("delta liters"));
+     Serial.println(Liters - oldLiters);
+    if (Liters - oldLiters > 0.01){
       WaterFlowing = true;
-      Resta = waterFlow - oldwaterflow;
-      Serial.print(F("Resta:"));
-      Serial.println(Resta);      
-    }
-  }else{
-    WaterFlowing = false;
-  }
-}
-
-void CheckBottle(){
-  if(millis() - lastSenseMillis > UPDATELASERM) {
-    SenseDistance();
-    lastSenseMillis = millis(); //Actulizar la ultima hora de envio
-  }
-   if (distance != OldDistance){
-    if (distance < 100){
-      Bottle = 1;
+      Serial.println(F("Se detecto agua por el sensor"));
+      Serial.print(F("estadoF:"));
+      Serial.println(WaterFlowing);
     }
     else{
-      Bottle = 0;
+      WaterFlowing = false;
+      Serial.print(F("estadoF:"));
+      Serial.println(WaterFlowing);
     }
-    OldDistance = distance;
-  }  
-}
-
-void CheckWaterFlow(){
-  if(millis() - lastFSenseMillis > UPDATELASERM) {
-    Serial.print(F("WaterinLtrs: "));
-    Serial.println(waterFlow);
-    Serial.print(F("difference: "));
-    Serial.println(waterFlow - oldwaterflow);
-    lastFSenseMillis = millis(); //Actulizar la ultima hora de envio      
+    oldLiters = Liters;
+    SensedWater = false;
   }
+}
   
-  if (WaterFlowing != false){
-    DisplayStrings();    
-    oldwaterflow = waterFlow;
-    ScreenUpdate();
+void SenseBottle(){
+  if(MaxLitersServed != true){
+    if(millis() - lastSenseMillis > UPDATELASERM) {
+      SenseDistance();
+      lastSenseMillis = millis(); //Actulizar la ultima hora de envio
+    }
+  }else{
+    SensedDistance = false;
+    Serial.println(F("one bottleserved waiting 5 conds"));
+    if(millis() - lastFSenseMillis > (10*UPDATEFLOWM) ) {
+      SenseDistance();
+      lastSenseMillis = millis(); //Actulizar la ultima hora de envio
+      MaxLitersServed = false;
+    }
   }
-}
-
-void IOValve(){
-  if (Bottle != OldBottle){
-    if (Bottle !=0){
-      portA.Update(LOW);
-      }else {
-        portA.Update(HIGH);
-        ScreenUpdate();
-        BotellaServidas ++;
-      }
-   }
-   OldBottle = Bottle;  
+    
+  if(SensedDistance !=false){
+    if (distance < 100){
+      Bottle = true;
+      Serial.println(F("Se detecto una botella"));
+      Serial.print(F("estadoD:"));
+      Serial.println(Bottle);      
+    }
+    else{
+      Bottle = false;
+      Serial.print(F("estadoD:"));
+      Serial.println(Bottle);
+    }
+    SensedDistance = false;
+  }
 }
  
-void DisplayStrings(){ 
+void DisplayMassage(){
+  if (Bottle != OldBottle){
+    Serial.print(F("Bottle != OldBottle: "));
+    Serial.print(Bottle);
+    Serial.println(OldBottle);
+    if (Bottle !=false){
+       Serial.println(F("Bottle !=false"));
+      if (WaterFlowing != true){
+        Serial.println(F("Se abrira la Valvula de Agua"));
+        ByDistance =true;
+        IOValve(LOW);
+        DisplayStrings();
+      }
+    }
+  }else{
+    if(Bottle != true){
+      if (WaterFlowing != false){
+        Serial.println(F("se detecto el chorro abierto"));
+        ByDistance = false;
+        DisplayStrings();
+      }
+    }
+  } 
+     
+  if(updateScreen != false){
+    ScreenUpdate();
+    updateScreen = false;
+  }
+}
+
+void IOValve(bool VState){
+ portA.Update(VState);
+ Serial.print(F("Setting valve to state: "));
+ Serial.println(VState);
+}
+
+ 
+void DisplayStrings(){
+  String text = ""; 
   tft.fillScreen(ST7735_BLACK);
   if (TextColor == 0){
     tft.setTextColor(ST7735_BLUE, ST7735_BLACK);  // White on black
@@ -217,39 +254,57 @@ void DisplayStrings(){
   tft.setFont();
   tft.setTextSize(5);  // large letters
   tft.setRotation(1); // horizontal display
-  text = descriptions [S];
-  //Serial.println (descriptions [i]);
-  const int width = 5;  // width of the marquee display (in characters)
-  // Loop once through the string
-  for (unsigned int offset = 0; offset < text.length(); offset++){
-    // Construct the string to display for this iteration
-    String t = "";
-    for (int i = 0; i < width; i++)
-    t += text.charAt((offset + i) % text.length()-1);
-    // Print  the string for this iteration
-    tft.setCursor(0, tft.height()/2-10);  // display will be halfway down screen
-    tft.print(t);
-    SenseWaterFlow();
-    CheckBottle();
-    if(Bottle != true){
-        break;
+  for(int s = 0; s <NUMBER_OF_ELEMENTS; s++){
+    text = descriptions [s];
+    //Serial.println (descriptions [i]);
+    const int width = 5;  // width of the marquee display (in characters)
+    // Loop once through the string
+    for (unsigned int offset = 0; offset < text.length(); offset++){
+      // Construct the string to display for this iteration
+      String t = "";
+      for (int i = 0; i < width; i++)
+      t += text.charAt((offset + i) % text.length()-1);
+      // Print  the string for this iteration
+      tft.setCursor(0, tft.height()/2-10);  // display will be halfway down screen
+      tft.print(t);
+      if(ByDistance!= false){
+        Serial.println(F("Checking if Bottle is still there"));
+        SenseBottle();
+        SenseMaxLiters();
+        if (Bottle != true){
+          Serial.println(F("Buttle is not there any more shuttin the valve"));
+          IOValve(HIGH);
+          updateScreen = true;
+          break;
+        }        
       }
-    if(WaterFlowing != true){
-      break;
+      if(ByDistance!= true){
+        Serial.println(F("Checking if Water is still Flowing"));
+        SenseWaterFlow();
+        if (WaterFlowing != true){
+          Serial.println(F("Water is not Flowing any more"));
+          updateScreen = true;
+          break; 
+        }
+      }
+      // Short delay so the text doesn't move too fast
+      delay(150);
     }
-    if(Resta > 0.20){
-      portA.Update(HIGH);
-      delay(500);
-      break;      
-    }
-    // Short delay so the text doesn't move too fast
-    delay(150);
   }
-  if(S < NUMBER_OF_ELEMENTS){
-    S++;
-  }else{
-    S=0;
+}
+
+void SenseMaxLiters (){
+  SenseFlowSensor ();
+  float CurrentLiters = (Liters - InitialLiters)/ MAX_Liters;
+  Serial.print(F("Current Liters Served: "));
+  Serial.println(CurrentLiters);
+  if (CurrentLiters >= 1) {
+    Bottle = false;
+    MaxLitersServed = true;
+    InitialLiters = Liters;
+    CurrentLiters = 0;   
   }
+  MaxLitersServed= false;
 }
 
 void ScreenUpdate(){
@@ -263,12 +318,23 @@ void ScreenUpdate(){
   tft.setCursor(50, 100);
   tft.setTextColor(ST7735_BLUE);
   tft.setTextSize(1);
-  tft.print(waterFlow,2);
+  tft.print(Liters,2);
   tft.println(F("L"));
+  BotellaServidas ++;
+}
+
+void SenseFlowSensor (){
+  if( waterFlow != oldWaterFlow){
+    Liters = waterFlow/1675;
+    oldWaterFlow = waterFlow;
+    SensedWater= true;
+  }
+  //Serial.println(F("detectando agua"));
 }
 
 void SenseDistance(){
   distance = sensor.readRangeSingleMillimeters();
+  SensedDistance = true;
   //Serial.print(distance);
   if (sensor.timeoutOccurred()) {
     tft.fillScreen(ST7735_BLACK);
@@ -278,6 +344,6 @@ void SenseDistance(){
     Serial.print(" TIMEOUT");
     tft.println("TIMEOUT");
   }
-  Serial.println(F(""));
+  //Serial.println(F("detectando distancia"));
 }
 
